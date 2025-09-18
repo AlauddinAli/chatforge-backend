@@ -8,13 +8,15 @@ Handles authentication, message persistence, multi-room chat, and live user pres
 ## 🌍 Live Backend  
 🔗 [ChatForge Backend API](https://chatforge-backend.onrender.com)  
 
+## 🌍 Live Frontend  
+🔗 [ChatForge Frontend ](https://chatforge-frontend-fxkd.vercel.app/)  
+
 ---
 ## Related Repositories
 
-🖥️ Frontend → [ChatForge](https://chatforge-frontend-fxkd.vercel.app/)
+🖥️ Frontend → [ChatForge](https://github.com/AlauddinAli/chatforge-frontend)
 
 ⚡ Backend → (this repo)
-
 ## ✨ Features  
 
 - **JWT Authentication** (Register/Login)  
@@ -35,8 +37,8 @@ Handles authentication, message persistence, multi-room chat, and live user pres
 | **Database** | MongoDB Atlas, Mongoose |
 | **Real-Time** | Socket.IO |
 | **Auth** | JWT, Bcrypt |
-| **Deployment** | Render |
-
+| **Deployment Backend** | Render |
+| **Deployment Frontend** | Vercel |
 ---
 
 ## 🚀 Getting Started  
