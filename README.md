@@ -65,7 +65,7 @@ npm run dev
 
 ### Author
 
-Built with ❤️ by Allauddin Ali
+Built with ❤️ by Alauddin Ali
 
 💡Passionate about building scalable systems and writing clean, maintainable code.
 Always learning. Always shipping. 🚀
