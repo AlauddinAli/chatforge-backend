@@ -11,7 +11,7 @@ Handles authentication, message persistence, multi-room chat, and live user pres
 ---
 ## Related Repositories
 
-🖥️ Frontend → ChatForge Frontend
+🖥️ Frontend → [ChatForge](https://chatforge-frontend-fxkd.vercel.app/)
 
 ⚡ Backend → (this repo)
 
@@ -66,5 +66,6 @@ npm run dev
 ### Author
 
 Built with ❤️ by Allauddin Ali
-💡 Passionate about building scalable systems and writing clean, maintainable code.
+
+💡Passionate about building scalable systems and writing clean, maintainable code.
 Always learning. Always shipping. 🚀
