@@ -2,40 +2,68 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+// ✅ Validate environment variables FIRST
+if (!process.env.MONGO_URI) {
+  console.error("❌ MONGO_URI is missing!");
+  process.exit(1);
+}
+if (!process.env.JWT_SECRET) {
+  console.error("❌ JWT_SECRET is missing!");
+  process.exit(1);
+}
+
+console.log("✅ Environment variables loaded");
+
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import { connectDB } from "./db.js";
 import authRoutes from "./routes/auth.js";
-import Message from "./models/Message.js"; // ✅ MongoDB message model
+import Message from "./models/Message.js";
 
 // Connect MongoDB
 connectDB();
 
 const app = express();
-app.use(cors());
+
+// ✅ FIXED CORS Configuration
+app.use(cors({
+  origin: [
+    "https://chatforge-frontend-fxkd.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:5000"
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" },
+  cors: {
+    origin: [
+      "https://chatforge-frontend-fxkd.vercel.app",
+      "http://localhost:5173"
+    ],
+    credentials: true
+  }
 });
 
 // --- Track state ---
-const socketRooms = {}; // socket.id -> Set of rooms joined
-const onlineUsersByRoom = {}; // room -> Set of usernames
+const socketRooms = {};
+const onlineUsersByRoom = {};
 
 io.on("connection", (socket) => {
   console.log(`⚡ User connected: ${socket.id}`);
 
-  // ✅ Join room
   socket.on("joinRoom", async ({ room, user, userId }) => {
     try {
       socket.data.userName = user;
 
-      // Leave old rooms
       const prevRooms = socketRooms[socket.id] || new Set();
       for (const r of prevRooms) {
         socket.leave(r);
@@ -45,7 +73,6 @@ io.on("connection", (socket) => {
         }
       }
 
-      // Join new room
       socket.join(room);
       socketRooms[socket.id] = new Set([room]);
 
@@ -54,7 +81,6 @@ io.on("connection", (socket) => {
 
       io.to(room).emit("onlineUsers", Array.from(onlineUsersByRoom[room]));
 
-      // Send last 50 messages
       const msgs = await Message.find({ room })
         .sort({ createdAt: -1 })
         .limit(50)
@@ -67,7 +93,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ✅ Send message
   socket.on("sendMessage", async ({ room, message, user, userId }) => {
     try {
       const saved = await Message.create({
@@ -93,13 +118,11 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ✅ Typing indicator
   socket.on("typing", ({ room, user }) => {
     if (!room || !user) return;
     socket.to(room).emit("typing", { user });
   });
 
-  // ✅ Disconnect
   socket.on("disconnect", () => {
     const userName = socket.data?.userName;
     const rooms = socketRooms[socket.id] || new Set();
@@ -117,7 +140,12 @@ io.on("connection", (socket) => {
 });
 
 app.get("/", (req, res) => {
-  res.send("🔥 ChatForge Backend Running with Socket.IO + Persistence!");
+  res.send("🔥 ChatForge Backend Running!");
+});
+
+// ✅ Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({ status: "OK", timestamp: new Date() });
 });
 
 const PORT = process.env.PORT || 5000;
