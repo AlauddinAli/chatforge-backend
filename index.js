@@ -1,7 +1,6 @@
 
 
-
-// backend/index.js
+// // backend/index.js
 // import dotenv from "dotenv";
 // dotenv.config();
 
@@ -50,6 +49,7 @@
 // app.use(express.json());
 // app.use("/api/auth", authRoutes);
 // app.use("/api/users", authRoutes);
+
 // // Enable upload route only if Cloudinary is configured
 // if (
 //   process.env.CLOUDINARY_CLOUD_NAME &&
@@ -75,43 +75,91 @@
 //   }
 // });
 
-// // --- Track state ---
-// const socketRooms = {};
-// const onlineUsersByRoom = {};
+// // --- 🔥 FIXED: Track state using userId as unique identifier ---
+// const socketRooms = {}; // { socketId: Set([rooms]) }
+// const userSocketMap = {}; // { userId: socketId }
+// const onlineUsersByRoom = {}; // { room: Map({ userId: username }) }
 
 // io.on("connection", (socket) => {
 //   console.log(`⚡ User connected: ${socket.id}`);
 
 //   socket.on("joinRoom", async ({ room, user, userId }) => {
 //     try {
+//       // Store user data on socket
 //       socket.data.userName = user;
+//       socket.data.userId = userId;
 
+//       // 🔥 FIX: Remove user from previous rooms
 //       const prevRooms = socketRooms[socket.id] || new Set();
 //       for (const r of prevRooms) {
 //         socket.leave(r);
-//         if (onlineUsersByRoom[r]) {
-//           onlineUsersByRoom[r].delete(user);
-//           io.to(r).emit("onlineUsers", Array.from(onlineUsersByRoom[r]));
+//         if (onlineUsersByRoom[r] && userId) {
+//           onlineUsersByRoom[r].delete(userId);
+//           // Emit updated list without duplicates
+//           io.to(r).emit("onlineUsers", Array.from(onlineUsersByRoom[r].values()));
 //         }
+//       }
+
+//       // 🔥 FIX: Track user by userId instead of username
+//       if (userId) {
+//         // Disconnect old socket if user reconnects
+//         const oldSocketId = userSocketMap[userId];
+//         if (oldSocketId && oldSocketId !== socket.id) {
+//           const oldSocket = io.sockets.sockets.get(oldSocketId);
+//           if (oldSocket) {
+//             oldSocket.disconnect(true);
+//           }
+//         }
+//         userSocketMap[userId] = socket.id;
 //       }
 
 //       socket.join(room);
 //       socketRooms[socket.id] = new Set([room]);
 
-//       if (!onlineUsersByRoom[room]) onlineUsersByRoom[room] = new Set();
-//       onlineUsersByRoom[room].add(user);
+//       // 🔥 FIX: Use Map with userId as key to prevent duplicates
+//       if (!onlineUsersByRoom[room]) {
+//         onlineUsersByRoom[room] = new Map();
+//       }
+      
+//       if (userId) {
+//         onlineUsersByRoom[room].set(userId, user); // userId -> username mapping
+//       } else {
+//         // Fallback for users without userId (shouldn't happen)
+//         onlineUsersByRoom[room].set(socket.id, user);
+//       }
 
-//       io.to(room).emit("onlineUsers", Array.from(onlineUsersByRoom[room]));
+//       // Emit unique usernames only
+//       io.to(room).emit("onlineUsers", Array.from(onlineUsersByRoom[room].values()));
 
+//       // Load previous messages
 //       const msgs = await Message.find({ room })
 //         .sort({ createdAt: -1 })
 //         .limit(50)
 //         .lean();
 //       socket.emit("roomMessages", msgs.reverse());
 
-//       console.log(`👤 ${user} joined room: ${room}`);
+//       console.log(`👤 ${user} (${userId}) joined room: ${room}`);
 //     } catch (err) {
 //       console.error("joinRoom error:", err);
+//     }
+//   });
+
+//   // 🔥 NEW: Handle username updates
+//   socket.on("updateUsername", ({ room, userId, newUsername }) => {
+//     try {
+//       if (!userId || !room) return;
+
+//       // Update username in the room's user map
+//       if (onlineUsersByRoom[room] && onlineUsersByRoom[room].has(userId)) {
+//         onlineUsersByRoom[room].set(userId, newUsername);
+//         socket.data.userName = newUsername;
+        
+//         // Broadcast updated user list
+//         io.to(room).emit("onlineUsers", Array.from(onlineUsersByRoom[room].values()));
+//         console.log(`✏️ ${userId} updated username to: ${newUsername} in ${room}`);
+//       }
+//     } catch (err) {
+//       console.error("updateUsername error:", err);
 //     }
 //   });
 
@@ -183,17 +231,26 @@
 
 //   socket.on("disconnect", () => {
 //     const userName = socket.data?.userName;
+//     const userId = socket.data?.userId;
 //     const rooms = socketRooms[socket.id] || new Set();
 
+//     // 🔥 FIX: Remove by userId to prevent duplicate entries
 //     for (const r of rooms) {
 //       if (onlineUsersByRoom[r]) {
-//         if (userName) onlineUsersByRoom[r].delete(userName);
-//         io.to(r).emit("onlineUsers", Array.from(onlineUsersByRoom[r]));
+//         if (userId) {
+//           onlineUsersByRoom[r].delete(userId);
+//         } else {
+//           onlineUsersByRoom[r].delete(socket.id);
+//         }
+//         io.to(r).emit("onlineUsers", Array.from(onlineUsersByRoom[r].values()));
 //       }
 //     }
 
+//     if (userId) {
+//       delete userSocketMap[userId];
+//     }
 //     delete socketRooms[socket.id];
-//     console.log(`❌ User disconnected: ${socket.id}`);
+//     console.log(`❌ User disconnected: ${socket.id} (${userName})`);
 //   });
 // });
 
@@ -205,7 +262,7 @@
 //   res.json({ status: "OK", timestamp: new Date() });
 // });
 
-// // 🔥 NEW: Load more messages route for infinite scroll
+// // 🔥 Load more messages route for infinite scroll
 // app.get("/api/messages/:room", async (req, res) => {
 //   try {
 //     const { room } = req.params;
@@ -234,7 +291,6 @@
 // server.listen(PORT, () =>
 //   console.log(`🚀 Server running on port ${PORT}`)
 // );
-
 
 // backend/index.js
 import dotenv from "dotenv";
@@ -367,8 +423,9 @@ io.on("connection", (socket) => {
       // Emit unique usernames only
       io.to(room).emit("onlineUsers", Array.from(onlineUsersByRoom[room].values()));
 
-      // Load previous messages
+      // Load previous messages with populated replies
       const msgs = await Message.find({ room })
+        .populate('replyTo')
         .sort({ createdAt: -1 })
         .limit(50)
         .lean();
@@ -380,7 +437,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 🔥 NEW: Handle username updates
+  // 🔥 Handle username updates
   socket.on("updateUsername", ({ room, userId, newUsername }) => {
     try {
       if (!userId || !room) return;
@@ -423,6 +480,9 @@ io.on("connection", (socket) => {
         fileType: saved.fileType,
         fileSize: saved.fileSize,
         createdAt: saved.createdAt,
+        reactions: saved.reactions || {},
+        replyTo: saved.replyTo || null,
+        replyCount: saved.replyCount || 0
       };
 
       io.to(room).emit("receiveMessage", payload);
@@ -434,6 +494,80 @@ io.on("connection", (socket) => {
       }
     } catch (err) {
       console.error("sendMessage error:", err);
+    }
+  });
+
+  // 🔥 NEW: Handle threaded replies
+  socket.on("sendReply", async ({ room, message, user, userId, replyTo, fileUrl, fileName, fileType, fileSize }) => {
+    try {
+      const newMessage = await Message.create({
+        room,
+        user,
+        userId: userId || null,
+        message: message || "",
+        fileUrl: fileUrl || null,
+        fileName: fileName || null,
+        fileType: fileType || null,
+        fileSize: fileSize || null,
+        replyTo: replyTo || null
+      });
+
+      // Increment reply count on parent message
+      if (replyTo) {
+        await Message.findByIdAndUpdate(replyTo, { $inc: { replyCount: 1 } });
+      }
+
+      // Populate the replyTo field to send full parent message data
+      const populatedMessage = await Message.findById(newMessage._id).populate('replyTo').lean();
+
+      io.to(room).emit("receiveMessage", populatedMessage);
+      
+      console.log(`💬 Reply sent by ${user} to message ${replyTo}`);
+    } catch (err) {
+      console.error("Error sending reply:", err);
+    }
+  });
+
+  // 🔥 NEW: Handle message reactions
+  socket.on("addReaction", async ({ messageId, emoji, userId, room }) => {
+    try {
+      const message = await Message.findById(messageId);
+      if (!message) return;
+
+      // Initialize reactions if needed
+      if (!message.reactions) {
+        message.reactions = new Map();
+      }
+
+      // Get current users who reacted with this emoji
+      const reactedUsers = message.reactions.get(emoji) || [];
+      
+      // Toggle reaction (add if not present, remove if present)
+      if (reactedUsers.includes(userId)) {
+        // Remove reaction
+        const filtered = reactedUsers.filter(id => id !== userId);
+        if (filtered.length === 0) {
+          message.reactions.delete(emoji);
+        } else {
+          message.reactions.set(emoji, filtered);
+        }
+      } else {
+        // Add reaction
+        reactedUsers.push(userId);
+        message.reactions.set(emoji, reactedUsers);
+      }
+
+      await message.save();
+
+      // Broadcast updated reactions to room
+      io.to(room).emit("messageReaction", {
+        messageId,
+        reactions: Object.fromEntries(message.reactions || new Map())
+      });
+      
+      console.log(`${emoji} reaction toggled by ${userId} on message ${messageId}`);
+    } catch (err) {
+      console.error("Error adding reaction:", err);
     }
   });
 
@@ -491,14 +625,14 @@ io.on("connection", (socket) => {
 });
 
 app.get("/", (req, res) => {
-  res.send("🔥 ChatForge Backend Running with File Upload Support!");
+  res.send("🔥 ChatForge Backend Running with Reactions & Threads!");
 });
 
 app.get("/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date() });
 });
 
-// 🔥 Load more messages route for infinite scroll
+// 🔥 Load more messages route for infinite scroll (with populated replies)
 app.get("/api/messages/:room", async (req, res) => {
   try {
     const { room } = req.params;
@@ -513,6 +647,7 @@ app.get("/api/messages/:room", async (req, res) => {
     }
     
     const messages = await Message.find(query)
+      .populate('replyTo')
       .sort({ createdAt: -1 })
       .limit(parseInt(limit));
     
