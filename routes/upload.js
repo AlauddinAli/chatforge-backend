@@ -1,4 +1,5 @@
 
+
 // // backend/routes/upload.js
 // import express from "express";
 // import multer from "multer";
@@ -65,12 +66,48 @@
 //   },
 // });
 
+// // 🔥 MIDDLEWARE TO CATCH MULTER ERRORS
+// const handleMulterError = (err, req, res, next) => {
+//   if (err instanceof multer.MulterError) {
+//     console.error("=" . repeat(50));
+//     console.error("❌ MULTER ERROR:");
+//     console.error("Message:", err.message);
+//     console.error("Code:", err.code);
+//     console.error("Field:", err.field);
+//     console.error("=" . repeat(50));
+//     return res.status(400).json({ 
+//       message: "File upload error", 
+//       error: err.message,
+//       code: err.code
+//     });
+//   } else if (err) {
+//     console.error("=" . repeat(50));
+//     console.error("❌ UPLOAD MIDDLEWARE ERROR:");
+//     console.error("Message:", err.message);
+//     console.error("Stack:", err.stack);
+//     console.error("=" . repeat(50));
+//     return res.status(500).json({ 
+//       message: "Error processing upload", 
+//       error: err.message 
+//     });
+//   }
+//   next();
+// };
+
 // // Upload endpoint
-// router.post("/", upload.single("file"), async (req, res) => {
+// router.post("/", upload.single("file"), handleMulterError, async (req, res) => {
 //   try {
+//     console.log("📤 Upload attempt received");
+//     console.log("File object:", req.file ? "✅ Present" : "❌ Missing");
+    
 //     if (!req.file) {
+//       console.error("❌ No file in request");
 //       return res.status(400).json({ message: "No file uploaded" });
 //     }
+
+//     console.log("✅ File received:", req.file.originalname);
+//     console.log("File size:", req.file.size);
+//     console.log("File mimetype:", req.file.mimetype);
 
 //     // Determine file type
 //     let fileType = "document";
@@ -79,6 +116,8 @@
 //     } else if (req.file.mimetype === "application/pdf") {
 //       fileType = "pdf";
 //     }
+
+//     console.log("✅ File uploaded successfully to:", req.file.path);
 
 //     // Return file info
 //     res.status(200).json({
@@ -89,13 +128,24 @@
 //       fileSize: req.file.size,
 //     });
 //   } catch (err) {
-//     console.error("Upload error:", err);
-//     res.status(500).json({ message: "Error uploading file", error: err.message });
+//     console.error("=" . repeat(50));
+//     console.error("❌ UPLOAD ENDPOINT ERROR:");
+//     console.error("Error Message:", err.message || "No message");
+//     console.error("Error Name:", err.name || "Unknown");
+//     console.error("Error Code:", err.code || "No code");
+//     console.error("Error Stack:", err.stack || "No stack");
+//     console.error("Full Error Object:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
+//     console.error("=" . repeat(50));
+    
+//     res.status(500).json({ 
+//       message: "Error uploading file", 
+//       error: err.message || err.toString(),
+//       details: err.code || "Unknown error"
+//     });
 //   }
 // });
 
 // export default router;
-
 
 // backend/routes/upload.js
 import express from "express";
@@ -121,14 +171,15 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
-    // Determine folder and resource type based on file type
     let folder = "chatforge/uploads";
-    let resourceType = "auto";
+    let resourceType = "raw"; // 🔥 CHANGED: Use "raw" for all non-image files
+    let format = file.originalname.split('.').pop(); // Get file extension
 
     return {
       folder: folder,
       resource_type: resourceType,
-      allowed_formats: ["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "txt", "zip"],
+      format: format, // Preserve original format
+      public_id: `${Date.now()}-${file.originalname.split('.')[0]}`, // Unique filename
     };
   },
 });
@@ -141,8 +192,8 @@ const fileFilter = (req, file, cb) => {
     "image/png",
     "image/gif",
     "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword", // .doc
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
     "text/plain",
     "application/zip",
   ];
@@ -169,19 +220,15 @@ const handleMulterError = (err, req, res, next) => {
     console.error("=" . repeat(50));
     console.error("❌ MULTER ERROR:");
     console.error("Message:", err.message);
-    console.error("Code:", err.code);
-    console.error("Field:", err.field);
     console.error("=" . repeat(50));
     return res.status(400).json({ 
       message: "File upload error", 
-      error: err.message,
-      code: err.code
+      error: err.message
     });
   } else if (err) {
     console.error("=" . repeat(50));
     console.error("❌ UPLOAD MIDDLEWARE ERROR:");
     console.error("Message:", err.message);
-    console.error("Stack:", err.stack);
     console.error("=" . repeat(50));
     return res.status(500).json({ 
       message: "Error processing upload", 
@@ -195,7 +242,6 @@ const handleMulterError = (err, req, res, next) => {
 router.post("/", upload.single("file"), handleMulterError, async (req, res) => {
   try {
     console.log("📤 Upload attempt received");
-    console.log("File object:", req.file ? "✅ Present" : "❌ Missing");
     
     if (!req.file) {
       console.error("❌ No file in request");
@@ -203,8 +249,6 @@ router.post("/", upload.single("file"), handleMulterError, async (req, res) => {
     }
 
     console.log("✅ File received:", req.file.originalname);
-    console.log("File size:", req.file.size);
-    console.log("File mimetype:", req.file.mimetype);
 
     // Determine file type
     let fileType = "document";
@@ -227,17 +271,12 @@ router.post("/", upload.single("file"), handleMulterError, async (req, res) => {
   } catch (err) {
     console.error("=" . repeat(50));
     console.error("❌ UPLOAD ENDPOINT ERROR:");
-    console.error("Error Message:", err.message || "No message");
-    console.error("Error Name:", err.name || "Unknown");
-    console.error("Error Code:", err.code || "No code");
-    console.error("Error Stack:", err.stack || "No stack");
-    console.error("Full Error Object:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
+    console.error("Error Message:", err.message);
     console.error("=" . repeat(50));
     
     res.status(500).json({ 
       message: "Error uploading file", 
-      error: err.message || err.toString(),
-      details: err.code || "Unknown error"
+      error: err.message
     });
   }
 });
